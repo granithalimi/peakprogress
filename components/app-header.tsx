@@ -39,7 +39,7 @@ export function AppHeader({ userEmail }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-        {/* Brand Logo */}
+        {/* Brand  Logo */}
         <Link
           href="/"
           className="group inline-flex items-center gap-2.5 transition-opacity hover:opacity-90"
