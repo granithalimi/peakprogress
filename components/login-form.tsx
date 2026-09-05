@@ -38,8 +38,8 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/protected");
+      router.push("/");
+      router.refresh();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -49,55 +49,117 @@ export function LoginForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>
-            Enter your email below to login to your account
+      <Card className="border border-slate-200/80 bg-white shadow-lg shadow-slate-100/80 rounded-2xl">
+        <CardHeader className="space-y-1.5 pb-6 pt-8 text-center sm:text-left">
+          <div className="flex items-center justify-between mb-2">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 group transition-opacity hover:opacity-85"
+              aria-label="Go to Home"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm shadow-sky-500/30 group-hover:scale-105 transition-transform">
+                {/* Gym / Dumbbell icon */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="m6.5 6.5 11 11" />
+                  <path d="m21 21-1-1" />
+                  <path d="m3 3 1 1" />
+                  <path d="m18 22 4-4" />
+                  <path d="m2 6 4-4" />
+                  <path d="m3 10 7-7" />
+                  <path d="m14 21 7-7" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold tracking-tight text-slate-900">
+                Peak<span className="text-sky-500">Progress</span>
+              </span>
+            </Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-600 border border-sky-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+              Tracker
+            </span>
+          </div>
+          <CardTitle className="text-2xl font-bold tracking-tight text-slate-900">
+            Sign in
+          </CardTitle>
+          <CardDescription className="text-sm text-slate-500">
+            Enter your email and password to access your workouts.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin}>
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                  <Link
-                    href="/auth/forgot-password"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Logging in..." : "Login"}
-              </Button>
+        <CardContent className="pb-8">
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11 rounded-xl border-slate-200 bg-white px-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
+              />
             </div>
-            <div className="mt-4 text-center text-sm">
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                  Password
+                </Label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-xs font-medium text-sky-600 hover:text-sky-700 transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-11 rounded-xl border-slate-200 bg-white px-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50/80 px-3.5 py-2.5 text-xs font-medium text-red-600">
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-medium shadow-sm transition-all active:scale-[0.99] disabled:opacity-70 mt-2 cursor-pointer"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+
+            <div className="pt-2 text-center text-sm text-slate-500">
               Don&apos;t have an account?{" "}
               <Link
                 href="/auth/sign-up"
-                className="underline underline-offset-4"
+                className="font-semibold text-slate-900 hover:text-sky-600 transition-colors underline-offset-4 hover:underline"
               >
                 Sign up
               </Link>

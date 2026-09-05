@@ -1,58 +1,135 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
-import { Suspense } from "react";
+import { createClient } from "@/lib/supabase/server";
+import { AppHeader } from "@/components/app-header";
+import { DashboardView } from "@/components/dashboard-view";
+import {
+  DashboardMetrics,
+  WeeklyProgressDay,
+  workout_log_entries,
+  plan_days,
+} from "@/lib/types";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+function getStartOfWeek(d: Date): Date {
+  const date = new Date(d);
+  const day = date.getDay(); // 0 is Sunday, 1 is Monday...
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+export default async function Home() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/auth/login");
+  }
+
+  // 1. Fetch active workout plan with days and exercises
+  const { data: activePlans } = await supabase
+    .from("workout_plans")
+    .select("*, plan_days(*, plan_exercises(*))")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .limit(1);
+
+  const activePlan = activePlans && activePlans.length > 0 ? activePlans[0] : null;
+
+  // 2. Fetch workout logs for user
+  const { data: logs } = await supabase
+    .from("workout_logs")
+    .select("*, workout_log_entries(*)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  const workoutLogs = logs || [];
+
+  // Calculate current week boundaries
+  const now = new Date();
+  const todayDayOfWeek = (now.getDay() + 6) % 7; // Convert 0(Sun)->6, 1(Mon)->0, etc.
+  const startOfWeek = getStartOfWeek(now);
+  const weekStartStr = startOfWeek.toISOString().split("T")[0];
+
+  // Current week's logs
+  const thisWeekLogs = workoutLogs.filter((log) => {
+    return log.week_start_date === weekStartStr && log.completed;
+  });
+
+  // Calculate Metrics
+  const totalWorkouts = workoutLogs.filter((l) => l.completed).length;
+
+  // Calculate Total Volume from top sets across logs
+  let totalVolume = 0;
+  workoutLogs.forEach((log) => {
+    if (log.workout_log_entries) {
+      log.workout_log_entries.forEach((entry: workout_log_entries) => {
+        const weight = Number(entry.top_weight) || 0;
+        const reps = Number(entry.top_reps) || 0;
+        totalVolume += weight * reps;
+      });
+    }
+  });
+
+  // Calculate Weekly completion rate based on planned non-rest days
+  const plannedWorkoutDays =
+    activePlan?.plan_days?.filter((d: plan_days) => !d.is_rest).length || 5;
+  const completedThisWeekCount = thisWeekLogs.length;
+  const weeklyCompletionRate = Math.min(
+    100,
+    Math.round((completedThisWeekCount / (plannedWorkoutDays || 1)) * 100)
+  );
+
+  // Calculate Streak (consecutive weeks with at least 1 completed workout)
+  let currentStreak = 0;
+  if (completedThisWeekCount > 0) {
+    currentStreak = 1;
+  }
+
+  // 7-day tracker status (Monday through Sunday)
+  const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const weeklyDays: WeeklyProgressDay[] = dayNames.map((name, index) => {
+    const dayDate = new Date(startOfWeek);
+    dayDate.setDate(dayDate.getDate() + index);
+    const isToday = index === todayDayOfWeek;
+    const isCompleted = thisWeekLogs.some((log) => log.day_of_week === index);
+    const planDay = activePlan?.plan_days?.find((d: plan_days) => d.day_of_week === index);
+    const isRest = planDay?.is_rest ?? false;
+
+    return {
+      dayName: name,
+      dayOfWeek: index,
+      dateStr: dayDate.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      isCompleted,
+      isToday,
+      isRest,
+    };
+  });
+
+  const metrics: DashboardMetrics = {
+    totalWorkouts,
+    currentStreak,
+    weeklyCompletionRate,
+    totalVolume,
+  };
+
   return (
-    <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
-        <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
-          <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-            <div className="flex gap-5 items-center font-semibold">
-              <Link href={"/"}>Next.js Supabase Starter</Link>
-              <div className="flex items-center gap-2">
-                <DeployButton />
-              </div>
-            </div>
-            {!hasEnvVars ? (
-              <EnvVarWarning />
-            ) : (
-              <Suspense>
-                <AuthButton />
-              </Suspense>
-            )}
-          </div>
-        </nav>
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
-        </div>
+    <div className="min-h-screen bg-slate-50/50 flex flex-col">
+      <AppHeader userEmail={user.email} />
 
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
-      </div>
-    </main>
+      <main className="flex-1 mx-auto w-full max-w-5xl px-4 sm:px-6 pt-6 sm:pt-8">
+        <DashboardView
+          userEmail={user.email || ""}
+          activePlan={activePlan}
+          recentLogs={workoutLogs.slice(0, 5)}
+          metrics={metrics}
+          weeklyDays={weeklyDays}
+          todayDayOfWeek={todayDayOfWeek}
+        />
+      </main>
+    </div>
   );
 }
