@@ -77,6 +77,25 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
   );
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
+
+  // Debounce search query input (350ms)
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setDebouncedSearchQuery("");
+      setCursor(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+      setCursor(null);
+    }, 350);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   // Pagination & Cursor State
   const [cursor, setCursor] = useState<{
@@ -93,26 +112,37 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     hasPreviousPage: false,
   });
 
-  // Fetch exercise library from API with cursor pagination (before / after)
+  // Fetch exercise library from API (Browse or Live Search) with cursor pagination
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     setIsLoadingExercises(true);
 
     const params = new URLSearchParams();
     if (cursor?.after) params.append("after", cursor.after);
     if (cursor?.before) params.append("before", cursor.before);
-    if (selectedCategory && selectedCategory !== "All") {
-      params.append("category", selectedCategory);
+
+    let baseUrl = "https://oss.exercisedb.dev/api/v1/exercises";
+
+    if (debouncedSearchQuery) {
+      // Live search mode
+      baseUrl = "https://oss.exercisedb.dev/api/v1/exercises/search";
+      params.append("search", debouncedSearchQuery);
+    } else if (selectedCategory && selectedCategory !== "All") {
+      // Browse by category mode
+      baseUrl = "https://oss.exercisedb.dev/api/v1/exercises/bodyparts";
+      params.append("bodyParts", selectedCategory.toLowerCase());
     }
 
-    const url = `https://oss.exercisedb.dev/api/v1/exercises${params.toString() ? `?${params.toString()}` : ""}`;
+    const queryString = params.toString();
+    const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
 
-    fetch(url)
+    fetch(url, { signal: controller.signal })
       .then((res) => res.json())
       .then((json) => {
         if (!isMounted) return;
         setCatalogExercises(
-          json.data.map((item: any) => ({
+          (json.data || []).map((item: CatalogExercise) => ({
             exerciseId: item.exerciseId || item.id,
             name: item.name,
             bodyParts: item.bodyParts || (item.category ? [item.category] : []),
@@ -131,10 +161,18 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
             nextCursor: meta.nextCursor,
             previousCursor: meta.previousCursor || meta.prevCursor,
           });
+        } else {
+          setPageInfo({
+            hasNextPage: false,
+            hasPreviousPage: false,
+          });
         }
         setIsLoadingExercises(false);
       })
       .catch((err) => {
+        if (err.name === "AbortError") {
+          return; // Ignore aborted requests
+        }
         console.error("Failed to fetch exercises:", err);
         if (isMounted) {
           setIsLoadingExercises(false);
@@ -143,8 +181,9 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
 
     return () => {
       isMounted = false;
+      controller.abort();
     };
-  }, [cursor, selectedCategory]);
+  }, [cursor, selectedCategory, debouncedSearchQuery]);
 
   const [categories, setCategories] = useState<string[]>(["All"]);
 
@@ -170,17 +209,19 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
   }, []);
 
   const filteredCatalogExercises = useMemo(() => {
+    if (!selectedCategory || selectedCategory === "All") {
+      return catalogExercises;
+    }
+    // When a specific category is selected, ensure displayed exercises match
     return catalogExercises.filter((ex) => {
-      const matchesCategory =
-        selectedCategory === "All" ||
-        ex.category?.toLowerCase() === selectedCategory.toLowerCase();
-      const matchesSearch =
-        searchQuery === "" ||
-        ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ex.category?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
+      return (
+        ex.category?.toLowerCase() === selectedCategory.toLowerCase() ||
+        ex.bodyParts?.some(
+          (bp) => bp.toLowerCase() === selectedCategory.toLowerCase(),
+        )
+      );
     });
-  }, [catalogExercises, selectedCategory, searchQuery]);
+  }, [catalogExercises, selectedCategory]);
 
   const currentDayData = days[selectedDay];
 
@@ -468,7 +509,7 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                     placeholder="Search exercises by name or category..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-10 pl-9 pr-8 rounded-xl bg-slate-50/60 border-slate-200 text-xs sm:text-sm placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    className="h-10 pl-9 pr-8 rounded-xl bg-slate-50/60 border-slate-200 text-xs sm:text-sm placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 text-black"
                   />
                   {searchQuery && (
                     <button
@@ -489,7 +530,12 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                       <button
                         key={cat}
                         type="button"
-                        onClick={() => setSelectedCategory(cat)}
+                        onClick={() => {
+                          if (selectedCategory !== cat) {
+                            setSelectedCategory(cat);
+                            setCursor(null);
+                          }
+                        }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                           isSelected
                             ? "bg-sky-500 text-white shadow-xs"
