@@ -3,17 +3,44 @@
 import { useState, useMemo, useEffect } from "react";
 import { saveWorkoutPlan } from "@/features/plan/actions";
 import { CatalogExercise, PlanDayInput } from "@/lib/types";
-import { fetchCatalogExercises } from "@/lib/exercise-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {Save,Moon,Dumbbell,CheckCircle2,AlertCircle,Sparkles,Search,X,Plus,Layers,Check, } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  Save,
+  Moon,
+  Dumbbell,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  Search,
+  X,
+  Plus,
+  Layers,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 interface PlanManagerProps {
   initialDays: PlanDayInput[];
 }
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function PlanManager({ initialDays }: PlanManagerProps) {
@@ -37,28 +64,78 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
   });
 
   const [selectedDay, setSelectedDay] = useState<number>(0);
+  const [isLoadingExercises, setIsLoadingExercises] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Exercise catalog state
-  const [catalogExercises, setCatalogExercises] = useState<CatalogExercise[]>([]);
+  const [catalogExercises, setCatalogExercises] = useState<CatalogExercise[]>(
+    [],
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [isLoadingExercises, setIsLoadingExercises] = useState<boolean>(true);
 
-  // Fetch exercise library on mount
+  // Pagination & Cursor State
+  const [cursor, setCursor] = useState<{
+    before?: string;
+    after?: string;
+  } | null>(null);
+  const [pageInfo, setPageInfo] = useState<{
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    nextCursor?: string;
+    previousCursor?: string;
+  }>({
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
+
+  // Fetch exercise library from API with cursor pagination (before / after)
   useEffect(() => {
     let isMounted = true;
     setIsLoadingExercises(true);
 
-    fetchCatalogExercises()
-      .then((data) => {
-        if (isMounted) {
-          setCatalogExercises(data);
-          setIsLoadingExercises(false);
+    const params = new URLSearchParams();
+    if (cursor?.after) params.append("after", cursor.after);
+    if (cursor?.before) params.append("before", cursor.before);
+    if (selectedCategory && selectedCategory !== "All") {
+      params.append("category", selectedCategory);
+    }
+
+    const url = `https://oss.exercisedb.dev/api/v1/exercises${params.toString() ? `?${params.toString()}` : ""}`;
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isMounted) return;
+        setCatalogExercises(
+          json.data.map((item: any) => ({
+            exerciseId: item.exerciseId || item.id,
+            name: item.name,
+            bodyParts: item.bodyParts || (item.category ? [item.category] : []),
+            category: item.bodyParts?.[0] || item.category || "Other",
+            gifUrl: item.gifUrl || item.pic,
+          })),
+        );
+
+        if (json.pageInfo || json.pagination || json.meta) {
+          const meta = json.pageInfo || json.pagination || json.meta;
+          setPageInfo({
+            hasNextPage: Boolean(meta.hasNextPage ?? meta.nextCursor),
+            hasPreviousPage: Boolean(
+              meta.hasPreviousPage ?? meta.previousCursor,
+            ),
+            nextCursor: meta.nextCursor,
+            previousCursor: meta.previousCursor || meta.prevCursor,
+          });
         }
+        setIsLoadingExercises(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to fetch exercises:", err);
         if (isMounted) {
           setIsLoadingExercises(false);
         }
@@ -67,15 +144,30 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cursor, selectedCategory]);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    catalogExercises.forEach((ex) => {
-      if (ex.category) set.add(ex.category);
-    });
-    return ["All", ...Array.from(set).sort()];
-  }, [catalogExercises]);
+  const [categories, setCategories] = useState<string[]>(["All"]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("https://oss.exercisedb.dev/api/v1/bodyparts")
+      .then((res) => res.json())
+      .then((json) => {
+        if (isMounted && json.data) {
+          const fetchedCategories = json.data.map(
+            (item: { name: string }) => item.name,
+          );
+          setCategories(["All", ...fetchedCategories.sort()]);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch bodyparts categories:", err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredCatalogExercises = useMemo(() => {
     return catalogExercises.filter((ex) => {
@@ -102,7 +194,7 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
           };
         }
         return d;
-      })
+      }),
     );
   };
 
@@ -110,11 +202,15 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     setDays((prev) =>
       prev.map((d, idx) => {
         if (idx === selectedDay) {
-          const exists = d.exercises.some((e) => e.name.toLowerCase() === exercise.name.toLowerCase());
+          const exists = d.exercises.some(
+            (e) => e.name.toLowerCase() === exercise.name.toLowerCase(),
+          );
           if (exists) {
             return {
               ...d,
-              exercises: d.exercises.filter((e) => e.name.toLowerCase() !== exercise.name.toLowerCase()),
+              exercises: d.exercises.filter(
+                (e) => e.name.toLowerCase() !== exercise.name.toLowerCase(),
+              ),
             };
           } else {
             return {
@@ -122,7 +218,7 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
               exercises: [
                 ...d.exercises,
                 {
-                  id: exercise.id,
+                  exerciseId: exercise.exerciseId,
                   name: exercise.name,
                   target_sets: 3,
                   target_reps: 10,
@@ -134,7 +230,7 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
           }
         }
         return d;
-      })
+      }),
     );
   };
 
@@ -144,11 +240,13 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
         if (idx === selectedDay) {
           return {
             ...d,
-            exercises: d.exercises.filter((e) => e.name.toLowerCase() !== exerciseName.toLowerCase()),
+            exercises: d.exercises.filter(
+              (e) => e.name.toLowerCase() !== exerciseName.toLowerCase(),
+            ),
           };
         }
         return d;
-      })
+      }),
     );
   };
 
@@ -245,7 +343,9 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                     : "bg-slate-50/70 hover:bg-slate-100 text-slate-700 border border-slate-200/60"
                 }`}
               >
-                <span className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${isSelected ? "text-white" : "text-slate-800"}`}>
+                <span
+                  className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${isSelected ? "text-white" : "text-slate-800"}`}
+                >
                   {DAY_SHORT[idx]}
                 </span>
                 <span
@@ -253,8 +353,8 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                     isSelected
                       ? "bg-sky-600/60 text-white"
                       : isRest
-                      ? "bg-slate-200 text-slate-600"
-                      : "bg-sky-100/80 text-sky-700"
+                        ? "bg-slate-200 text-slate-600"
+                        : "bg-sky-100/80 text-sky-700"
                   }`}
                 >
                   {isRest ? "Rest" : `${exCount} ex`}
@@ -309,9 +409,12 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                 <Moon className="h-7 w-7" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-slate-900">Rest & Recovery Day</h3>
+                <h3 className="text-base font-bold text-slate-900">
+                  Rest & Recovery Day
+                </h3>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-sm">
-                  Rest days allow your muscles to rebuild and recover. You can toggle off Rest Day anytime to select exercises.
+                  Rest days allow your muscles to rebuild and recover. You can
+                  toggle off Rest Day anytime to select exercises.
                 </p>
               </div>
               <Button
@@ -329,7 +432,10 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
               {currentDayData.exercises.length > 0 && (
                 <div className="space-y-2 bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
                   <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                    <span>Selected for {DAY_NAMES[selectedDay]} ({currentDayData.exercises.length})</span>
+                    <span>
+                      Selected for {DAY_NAMES[selectedDay]} (
+                      {currentDayData.exercises.length})
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {currentDayData.exercises.map((exercise) => (
@@ -390,10 +496,51 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                             : "bg-slate-50 text-slate-600 border border-slate-200/80 hover:bg-slate-100"
                         }`}
                       >
-                        {cat}
+                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-slate-500 font-medium">
+                    Page controls
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        !pageInfo.hasPreviousPage && !pageInfo.previousCursor
+                      }
+                      onClick={() => {
+                        if (pageInfo.previousCursor) {
+                          setCursor({ before: pageInfo.previousCursor });
+                        }
+                      }}
+                      className="h-8 w-8 p-0"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!pageInfo.hasNextPage && !pageInfo.nextCursor}
+                      onClick={() => {
+                        if (pageInfo.nextCursor) {
+                          setCursor({ after: pageInfo.nextCursor });
+                        }
+                      }}
+                      className="h-8 w-8 p-0"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -409,60 +556,73 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                 ) : filteredCatalogExercises.length === 0 ? (
                   <div className="py-10 text-center flex flex-col items-center justify-center space-y-2">
                     <Layers className="h-8 w-8 text-slate-300" />
-                    <p className="text-xs font-semibold text-slate-700">No exercises found</p>
+                    <p className="text-xs font-semibold text-slate-700">
+                      No exercises found
+                    </p>
                     <p className="text-[11px] text-slate-400">
                       Try searching with a different term or category.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {filteredCatalogExercises.map((exercise) => {
                       const isAlreadyAdded = currentDayData.exercises.some(
-                        (e) => e.name.toLowerCase() === exercise.name.toLowerCase()
+                        (e) =>
+                          e.name.toLowerCase() === exercise.name.toLowerCase(),
                       );
 
                       return (
                         <div
-                          key={exercise.id}
+                          key={exercise.gifUrl || exercise.exerciseId || exercise.name}
                           onClick={() => handleToggleExercise(exercise)}
-                          className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none group ${
+                          className={`relative flex flex-col justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none group overflow-hidden ${
                             isAlreadyAdded
-                              ? "bg-sky-50/50 border-sky-300 shadow-2xs"
-                              : "bg-white border-slate-200/80 hover:border-sky-500 hover:shadow-xs"
+                              ? "bg-sky-50/50 border-sky-400 shadow-xs"
+                              : "bg-white border-slate-200/80 hover:border-sky-500 hover:shadow-md"
                           }`}
                         >
-                          <div className="h-12 w-12 shrink-0 rounded-lg overflow-hidden bg-slate-100 border border-slate-200/60 flex items-center justify-center">
-                            {exercise.pic ? (
+                          {/* Image Container with Toggle Badge */}
+                          <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center mb-2.5">
+                            {exercise.gifUrl ? (
                               <img
-                                src={exercise.pic}
+                                src={exercise.gifUrl}
                                 alt={exercise.name}
-                                className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"
                               />
                             ) : (
-                              <Dumbbell className="h-5 w-5 text-slate-400" />
+                              <Dumbbell className="h-8 w-8 text-slate-300" />
                             )}
+
+                            {/* Status Indicator Button */}
+                            <div className="absolute top-2 right-2">
+                              {isAlreadyAdded ? (
+                                <div className="h-7 w-7 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-sm">
+                                  <Check className="h-4 w-4" />
+                                </div>
+                              ) : (
+                                <div className="h-7 w-7 rounded-full bg-white/90 backdrop-blur-xs text-slate-600 border border-slate-200/80 group-hover:bg-sky-500 group-hover:text-white group-hover:border-transparent flex items-center justify-center transition-all shadow-2xs">
+                                  <Plus className="h-4 w-4" />
+                                </div>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate group-hover:text-sky-600 transition-colors">
+                          {/* Exercise Content */}
+                          <div className="flex-1 flex flex-col justify-between min-w-0">
+                            <h4
+                              className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-2 leading-tight group-hover:text-sky-600 transition-colors"
+                              title={exercise.name}
+                            >
                               {exercise.name}
                             </h4>
-                            <span className="inline-block mt-0.5 text-[10px] font-semibold text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100">
-                              {exercise.category}
-                            </span>
-                          </div>
-
-                          <div className="shrink-0">
-                            {isAlreadyAdded ? (
-                              <div className="h-7 w-7 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-2xs">
-                                <Check className="h-3.5 w-3.5" />
-                              </div>
-                            ) : (
-                              <div className="h-7 w-7 rounded-lg bg-slate-100 text-slate-500 group-hover:bg-sky-500 group-hover:text-white flex items-center justify-center transition-colors">
-                                <Plus className="h-3.5 w-3.5" />
-                              </div>
-                            )}
+                            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                              {exercise.bodyParts && exercise.bodyParts[0] && (
+                                <span className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100 truncate">
+                                  {exercise.bodyParts[0]}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -472,6 +632,45 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
               </div>
             </>
           )}
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-slate-500 font-medium">
+              Page controls
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!pageInfo.hasPreviousPage && !pageInfo.previousCursor}
+                onClick={() => {
+                  if (pageInfo.previousCursor) {
+                    setCursor({ before: pageInfo.previousCursor });
+                  }
+                }}
+                className="h-8 w-8 p-0"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!pageInfo.hasNextPage && !pageInfo.nextCursor}
+                onClick={() => {
+                  if (pageInfo.nextCursor) {
+                    setCursor({ after: pageInfo.nextCursor });
+                  }
+                }}
+                className="h-8 w-8 p-0"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -76,10 +76,13 @@ export interface WeeklyProgressDay {
 
 // External/Catalog Exercise Item Interface
 export interface CatalogExercise {
-  id: string;
+  exerciseId?: string;
+  id?: string;
   name: string;
-  category: string;
-  pic?: string; // Image URL / preview
+  bodyParts?: string[];
+  category?: string;
+  gifUrl?: string; // Image URL / preview
+  pic?: string;
 }
 
 export interface PlanDayInput {
