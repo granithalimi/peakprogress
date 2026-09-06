@@ -107,7 +107,7 @@ export function AppHeader({ userEmail }: AppHeaderProps) {
             className="h-9 px-3 rounded-xl text-xs font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5 mr-1 text-slate-400 group-hover:text-red-500" />
-            {isLoggingOut ? "..." : "Sign Out"}
+            {isLoggingOut ? "Signing out..." : "Sign Out"}
           </Button>
         </div>
       </div>

@@ -26,7 +26,17 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface PlanManagerProps {
   initialDays: PlanDayInput[];
@@ -299,6 +309,43 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     );
   };
 
+  const handleCopyFromDay = (sourceDayIndex: number) => {
+    const sourceDay = days[sourceDayIndex];
+    if (!sourceDay || sourceDay.exercises.length === 0) return;
+
+    setDays((prev) =>
+      prev.map((d, idx) => {
+        if (idx === selectedDay) {
+          // Keep existing exercises and add only non-duplicate exercises from source day
+          const existingNames = new Set(
+            d.exercises.map((e) => e.name.toLowerCase()),
+          );
+          const newExercises = sourceDay.exercises
+            .filter((e) => !existingNames.has(e.name.toLowerCase()))
+            .map((e, index) => ({
+              ...e,
+              order_index: d.exercises.length + index,
+            }));
+
+          return {
+            ...d,
+            is_rest: false, // Turn off rest day when copying exercises
+            exercises: [...d.exercises, ...newExercises],
+          };
+        }
+        return d;
+      }),
+    );
+
+    const sourceName = DAY_NAMES[sourceDayIndex];
+    const targetName = DAY_NAMES[selectedDay];
+    setSaveStatus({
+      type: "success",
+      message: `Copied exercises from ${sourceName} to ${targetName}.`,
+    });
+    setTimeout(() => setSaveStatus(null), 3000);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaveStatus(null);
@@ -434,7 +481,50 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
             </CardDescription>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 self-end sm:self-auto">
+            {/* Copy From Day Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 px-3.5 rounded-xl text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer shadow-2xs"
+                >
+                  <Copy className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
+                  <span>Copy from Day</span>
+                  <ChevronDown className="h-3 w-3 ml-1.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 rounded-xl p-1.5 shadow-lg border-slate-200 bg-white">
+                <DropdownMenuLabel className="text-[11px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1">
+                  Copy exercises to {DAY_NAMES[selectedDay]}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {days
+                  .filter((d) => d.day_of_week !== selectedDay)
+                  .map((d) => {
+                    const hasExercises = d.exercises && d.exercises.length > 0;
+                    return (
+                      <DropdownMenuItem
+                        key={d.day_of_week}
+                        disabled={!hasExercises}
+                        onClick={() => handleCopyFromDay(d.day_of_week)}
+                        className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer ${
+                          !hasExercises ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                      >
+                        <span className="font-medium text-slate-800">
+                          {DAY_NAMES[d.day_of_week]}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-semibold px-1.5 py-0.5 rounded bg-slate-100">
+                          {d.is_rest ? "Rest" : `${d.exercises.length} ex`}
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               type="button"
               variant={currentDayData.is_rest ? "default" : "outline"}
