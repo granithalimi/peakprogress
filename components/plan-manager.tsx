@@ -125,12 +125,10 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     let baseUrl = "https://oss.exercisedb.dev/api/v1/exercises";
 
     if (debouncedSearchQuery) {
-      // Live search mode
-      baseUrl = "https://oss.exercisedb.dev/api/v1/exercises/search";
-      params.append("search", debouncedSearchQuery);
-    } else if (selectedCategory && selectedCategory !== "All") {
-      // Browse by category mode
-      baseUrl = "https://oss.exercisedb.dev/api/v1/exercises/bodyparts";
+      params.append("name", debouncedSearchQuery);
+    }
+
+    if (selectedCategory && selectedCategory !== "All") {
       params.append("bodyParts", selectedCategory.toLowerCase());
     }
 
@@ -138,7 +136,12 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
     const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
 
     fetch(url, { signal: controller.signal })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Exercise API returned status ${res.status}`);
+        }
+        return res.json();
+      })
       .then((json) => {
         if (!isMounted) return;
         setCatalogExercises(
@@ -175,6 +178,11 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
         }
         console.error("Failed to fetch exercises:", err);
         if (isMounted) {
+          setCatalogExercises([]);
+          setPageInfo({
+            hasNextPage: false,
+            hasPreviousPage: false,
+          });
           setIsLoadingExercises(false);
         }
       });
