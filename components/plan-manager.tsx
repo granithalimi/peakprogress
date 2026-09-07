@@ -279,6 +279,7 @@ export function PlanManager({ initialDays }: PlanManagerProps) {
                 {
                   exerciseId: exercise.exerciseId,
                   name: exercise.name,
+                  image: exercise.gifUrl || exercise.pic || null,
                   target_sets: 3,
                   target_reps: 10,
                   target_weight: 0,

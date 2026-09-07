@@ -117,6 +117,7 @@ export async function saveWorkoutPlan(days: PlanDayInput[]) {
         .map((ex, idx) => ({
           plan_day_id: dayId!,
           name: ex.name.trim(),
+          image: ex.image || null,
           order_index: idx,
         }));
 

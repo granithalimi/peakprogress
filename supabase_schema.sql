@@ -35,6 +35,7 @@ create table if not exists public.plan_exercises (
   id uuid primary key default gen_random_uuid(),
   plan_day_id uuid references public.plan_days(id) on delete cascade not null,
   name text not null,
+  image text,
   order_index integer not null default 0
 );
 

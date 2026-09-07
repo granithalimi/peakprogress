@@ -22,9 +22,7 @@ export interface PlanExercise {
   id: string;
   plan_day_id: string;
   name: string;
-  target_sets: number;
-  target_reps: number;
-  target_weight: number;
+  image?: string | null;
   order_index: number;
 }
 
@@ -91,9 +89,7 @@ export interface PlanDayInput {
   exercises: {
     id?: string;
     name: string;
-    target_sets: number;
-    target_reps: number;
-    target_weight: number;
+    image?: string | null;
     order_index: number;
   }[];
 }

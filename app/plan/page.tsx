@@ -41,9 +41,7 @@ export default async function PlanPage() {
         exercises: sortedExercises.map((ex: plan_exercises) => ({
           id: ex.id,
           name: ex.name,
-          target_sets: ex.target_sets,
-          target_reps: ex.target_reps,
-          target_weight: Number(ex.target_weight) || 0,
+          image: ex.image || null,
           order_index: ex.order_index,
         })),
       };
